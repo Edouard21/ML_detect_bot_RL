@@ -1,7 +1,0 @@
-syntax = "proto2";
-
-package api;
-
-message PlayerId {
-    optional string id = 1;
-}
