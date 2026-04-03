@@ -13,8 +13,8 @@ import sys
 import json
 
 # --- PARAMETRES ---
-DOSSIER_REPLAYS = r"C:\Users\Edouard\Documents\Edouard\Projet RL\Script Extraction info game\replay\bot"
-DOSSIER_SORTIE_JOUEURS = r"C:\Users\Edouard\Documents\Edouard\Projet RL\Script Extraction info game\database\joueurs"
+DOSSIER_REPLAYS = r".\replay\bot"
+DOSSIER_SORTIE_JOUEURS = r".\database\joueurs"
 
 GLOBAL_FEATURES = []
 PLAYER_FEATURES = ["PlayerRigidBody", "PlayerBoost", "PlayerAnyJump"]
