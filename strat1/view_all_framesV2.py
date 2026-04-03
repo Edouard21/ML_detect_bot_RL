@@ -59,14 +59,42 @@ LISTE_BOTS = ["/",
 SPLIT_SCREEN_PATTERN = re.compile(r"^(.+)\((\d+)\)$")
 
 
-def extraire_noms_joueurs(meta):
-    """Extrait les noms des joueurs depuis les métadonnées du replay."""
+def extraire_noms_joueurs(meta, chemin_replay=None):
+    """
+    Extrait les noms des joueurs depuis les métadonnées du replay.
+    Si les métadonnées sont vides, tente une extraction via le flux réseau (fallback).
+    """
     noms_joueurs = []
     replay_meta = meta.get('replay_meta', {})
     for item in replay_meta.get('all_headers', []):
         if item[0] == 'PlayerStats':
             for stats in item[1]:
                 noms_joueurs.append(stats.get('Name', 'Unknown'))
+    
+    # Fallback : Si aucun nom trouvé dans les headers, on fouille le réseau
+    if not noms_joueurs and chemin_replay:
+        try:
+            with open(chemin_replay, "rb") as f:
+                d = subtr_actor.parse_replay(f.read())
+            
+            obj_pri_name = None
+            for i, obj in enumerate(d['objects']):
+                if obj == 'Engine.PlayerReplicationInfo:PlayerName': 
+                    obj_pri_name = i
+                    break
+            
+            if obj_pri_name is not None:
+                noms_trouves = set()
+                # On scanne les 2000 premières frames réseau pour trouver les noms
+                for f in d['network_frames']['frames'][:2000]:
+                    for a in f['updated_actors']:
+                        if a['object_id'] == obj_pri_name:
+                            nom = a['attribute'].get('String')
+                            if nom: noms_trouves.add(nom)
+                noms_joueurs = list(noms_trouves)
+        except:
+            pass
+            
     return noms_joueurs
 
 
@@ -292,7 +320,7 @@ def main():
 
     print("=" * 80)
     print("  🎮 EXTRACTION DATAFRAME DES DONNÉES JOUEURS - ROCKET LEAGUE")
-    print("  📂 Détection split-screen | Export format .parquet")
+    print("  📂 Détection split-screen | Export format .csv")
     print("=" * 80)
 
     os.makedirs(DOSSIER_SORTIE_JSON, exist_ok=True)
@@ -331,8 +359,8 @@ def main():
             # Construction du DataFrame
             df, nb_joueurs_matrice = construire_dataframe(meta, matrice, headers_info)
 
-            # Extraction des noms
-            noms_joueurs = extraire_noms_joueurs(meta)
+            # Extraction des noms (avec fallback réseau si besoin)
+            noms_joueurs = extraire_noms_joueurs(meta, fichier)
 
             # Détection split-screen
             split_info = detecter_split_screen(noms_joueurs)
@@ -357,10 +385,10 @@ def main():
             # Construction du DataFrame formaté en listes de listes (séquences)
             df_final = preparer_dataframe_ml_global(nom_fichier, df, nb_joueurs_matrice, noms_joueurs, split_info)
 
-            # Sauvegarde au format Parquet (Désactivée selon la demande)
-            # nom_sortie = nom_fichier.replace('.replay', '.parquet')
-            # chemin_sortie = os.path.join(DOSSIER_SORTIE_JSON, nom_sortie)
-            # df_final.to_parquet(chemin_sortie, index=False)
+            # Sauvegarde au format CSV
+            nom_sortie = nom_fichier.replace('.replay', '.csv')
+            chemin_sortie = os.path.join(DOSSIER_SORTIE_JSON, nom_sortie)
+            df_final.to_csv(chemin_sortie, index=False)
 
             joueurs_str = ", ".join(noms_joueurs)
             print(f"  [{idx + 1}/{len(fichiers)}] ✅ {chemin_relatif}")
