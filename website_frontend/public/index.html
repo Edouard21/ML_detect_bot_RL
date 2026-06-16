@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RL Bot Detector — Detect bots in your Rocket League replays</title>
+    <meta name="description" content="Upload your Rocket League .replay file and our AI model will detect if players are bots or real humans. Free and instant analysis.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <!-- Animated background -->
+    <div class="bg-effects" aria-hidden="true">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+        <div class="grid-overlay"></div>
+    </div>
+
+    <main class="container">
+        <!-- Hero -->
+        <header class="hero" id="hero">
+            <div class="logo-icon">
+                <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" width="56" height="56">
+                    <circle cx="32" cy="32" r="28" stroke="url(#grad)" stroke-width="3" fill="none" opacity="0.6"/>
+                    <circle cx="32" cy="32" r="18" stroke="url(#grad)" stroke-width="2" fill="none" opacity="0.3"/>
+                    <circle cx="24" cy="28" r="4" fill="#818cf8"/>
+                    <circle cx="40" cy="28" r="4" fill="#818cf8"/>
+                    <path d="M22 38 Q32 46 42 38" stroke="#818cf8" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+                    <defs>
+                        <linearGradient id="grad" x1="0" y1="0" x2="64" y2="64">
+                            <stop offset="0%" stop-color="#6366f1"/>
+                            <stop offset="100%" stop-color="#a855f7"/>
+                        </linearGradient>
+                    </defs>
+                </svg>
+            </div>
+            <h1 class="hero-title">
+                <span class="gradient-text">RL Bot Detector</span>
+            </h1>
+            <p class="hero-subtitle">Upload your Rocket League replay and let our AI analyze each player's behavior</p>
+        </header>
+
+        <!-- Upload Section -->
+        <section class="upload-section" id="uploadSection">
+            <div class="drop-zone" id="dropZone" tabindex="0" role="button" aria-label="Upload replay file">
+                <div class="drop-zone-content" id="dropZoneContent">
+                    <div class="upload-icon">
+                        <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" width="48" height="48">
+                            <path d="M24 32V12M24 12L16 20M24 12L32 20" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            <path d="M8 32V38C8 39.1046 8.89543 40 10 40H38C39.1046 40 40 39.1046 40 38V32" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <p class="drop-zone-title">Drag & drop your .replay file</p>
+                    <span class="drop-zone-hint">or click to browse</span>
+                    <span class="drop-zone-info">Maximum file size: 4.5 MB</span>
+                </div>
+                <input type="file" id="fileInput" accept=".replay" hidden>
+            </div>
+        </section>
+
+        <!-- Loading Section -->
+        <section class="loading-section" id="loadingSection" hidden>
+            <div class="loader-card">
+                <div class="spinner">
+                    <div class="spinner-ring"></div>
+                    <div class="spinner-ring"></div>
+                    <div class="spinner-ring"></div>
+                </div>
+                <p class="loader-text">Analyzing replay<span class="dots"></span></p>
+                <p class="loader-subtext" id="loaderSubtext">Extracting player data...</p>
+            </div>
+        </section>
+
+        <!-- Error Section -->
+        <section class="error-section" id="errorSection" hidden>
+            <div class="error-card">
+                <div class="error-icon">⚠️</div>
+                <p class="error-title">Something went wrong</p>
+                <p class="error-message" id="errorMessage"></p>
+                <button class="btn-retry" id="retryBtn">Try Again</button>
+            </div>
+        </section>
+
+        <!-- Results Section -->
+        <section class="results-section" id="resultsSection" hidden>
+            <div class="results-header">
+                <h2 class="results-title">Analysis Results</h2>
+                <p class="results-replay-name" id="replayName"></p>
+            </div>
+
+            <div class="results-summary" id="resultsSummary">
+                <div class="summary-stat" id="summaryPlayers">
+                    <span class="summary-value">0</span>
+                    <span class="summary-label">Players</span>
+                </div>
+                <div class="summary-stat" id="summaryReal">
+                    <span class="summary-value">0</span>
+                    <span class="summary-label">Real Players</span>
+                </div>
+                <div class="summary-stat" id="summaryBots">
+                    <span class="summary-value">0</span>
+                    <span class="summary-label">Bots Detected</span>
+                </div>
+            </div>
+
+            <div class="results-grid" id="resultsGrid"></div>
+
+            <button class="btn-new-analysis" id="newAnalysisBtn">
+                <svg viewBox="0 0 24 24" fill="none" width="18" height="18">
+                    <path d="M12 5V19M5 12H19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+                Analyze Another Replay
+            </button>
+        </section>
+    </main>
+
+    <footer class="footer">
+        <p>Powered by Machine Learning &bull; Temporal CNN trained on Rocket League replays</p>
+    </footer>
+
+    <script src="/script.js"></script>
+</body>
+</html>

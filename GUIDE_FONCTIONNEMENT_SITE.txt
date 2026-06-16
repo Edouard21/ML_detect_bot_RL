@@ -1,0 +1,303 @@
+GUIDE COMPLET - FONCTIONNEMENT DU SITE RL BOT DETECTOR
+=====================================================
+
+But du systeme
+--------------
+Ce projet detecte automatiquement si des joueurs dans un fichier Rocket League .replay
+semblent etre des bots ou des humains. L'architecture de production est separee en 2 blocs:
+
+1) Frontend + Proxy API sur Vercel
+2) Backend IA sur Hugging Face Spaces (FastAPI)
+
+Le navigateur n'appelle pas directement le backend IA public de facon naive:
+il passe par une route serveur Vercel (/api/analyze) qui injecte les secrets.
+
+
+Vue d'ensemble de l'architecture
+--------------------------------
+A. Frontend statique (Vercel)
+- Fichiers principaux:
+  - website_frontend/public/index.html
+  - website_frontend/public/style.css
+  - website_frontend/public/script.js
+- Role:
+  - Interface utilisateur (upload replay, etat chargement, affichage resultats)
+  - Validation client de base (extension, taille max 4.5 MB)
+  - Envoi du fichier a /api/analyze (meme domaine Vercel)
+
+B. Proxy API serverless (Vercel)
+- Fichier principal:
+  - website_frontend/api/analyze.js
+- Role:
+  - Recevoir la requete multipart/form-data du navigateur
+  - Appliquer des garde-fous anti-abus (rate limit, taille)
+  - Ajouter les secrets serveur (HF_API_KEY, optionnel HF_SPACE_TOKEN)
+  - Forward vers Hugging Face: HF_API_URL
+  - Renvoyer la reponse backend au frontend
+
+C. Backend IA (Hugging Face Space)
+- Fichiers principaux:
+  - website/app.py
+  - website/analyzer_utils.py
+  - website/eval_player_game.py
+  - website/best.pt
+- Role:
+  - Verifier l'API key
+  - Lire/valider le replay
+  - Extraire les features par joueur
+  - Lancer l'inference du modele
+  - Retourner prediction + confidence par joueur
+
+
+Details Frontend (navigateur)
+------------------------------
+1) Chargement de la page
+- Le navigateur charge index.html + style.css + script.js.
+- L'UI affiche une zone drag and drop pour un .replay.
+
+2) Validation cote client
+- script.js controle:
+  - extension: doit finir par .replay
+  - taille max: 4.5 MB (limite Vercel Hobby)
+- Si invalide: message d'erreur immediat (sans appel reseau).
+
+3) Preparation requete
+- Si valide:
+  - creation d'un FormData
+  - ajout du fichier dans la cle "file"
+  - fetch POST vers /api/analyze
+
+4) Affichage resultat
+- Si reponse OK:
+  - parse JSON
+  - affichage de la liste des joueurs
+  - badge Bot/Real + confidence
+- Si erreur:
+  - affichage detail erreur renvoyee par API
+
+Important:
+Le frontend ne contient AUCUN secret. Pas de HF_API_KEY dans le JS public.
+
+
+Details Proxy Vercel (pont securise)
+------------------------------------
+Le proxy est le point central de securite entre navigateur et backend IA.
+
+1) Controle methode HTTP
+- Refuse tout sauf POST.
+- GET /api/analyze retourne 405 (normal).
+
+2) Rate limiting basique
+- Limite par IP en memoire (fenetre 60s, max 6 req).
+- Si depassement: 429 Too Many Requests.
+
+3) Validation type de requete
+- Attend multipart/form-data.
+- Sinon: 400.
+
+4) Controle taille upload
+- Lit Content-Length si present.
+- Refuse > 4.5 MB avec 413.
+
+5) Injection des secrets serveur
+- Lit variables Vercel:
+  - HF_API_URL
+  - HF_API_KEY
+  - HF_SPACE_TOKEN (optionnel, utile si Space prive)
+- Ajoute headers en outbound:
+  - x-api-key: HF_API_KEY
+  - authorization: Bearer HF_SPACE_TOKEN (si present)
+
+6) Forward vers backend HF
+- Forward stream brut vers HF_API_URL
+- Timeout proxy ~55s
+- Si timeout: 504
+- Sinon: renvoie status + body au navigateur
+
+7) Garde-fou de configuration
+- Verification format HF_API_URL (doit ressembler a https://<slug>.hf.space/analyze)
+- Si invalide: 500 explicite
+
+Limitation connue:
+- Rate limit en memoire (instance locale): bien pour protection basique,
+  mais pas equivalent a un rate limit distribue multi-instance.
+  Pour hardening fort: Cloudflare/WAF + rate limit distribue.
+
+
+Details Backend FastAPI (Hugging Face)
+--------------------------------------
+1) Startup application
+- Au demarrage:
+  - charge best.pt via load_inference_model(...)
+  - garde modele en memoire globale
+- Si echec de chargement modele: endpoint /analyze renvoie 503.
+
+2) Securite requete
+- Middleware CORS:
+  - ALLOWED_ORIGIN strict (URL Vercel)
+- Verif API key:
+  - Header attendu: X-API-Key
+  - compare avec HF_API_KEY
+  - si absent/faux: 401
+
+3) Controle charge serveur
+- Semaphore de concurrence (MAX_CONCURRENT_JOBS, ex 2)
+- Si serveur surcharge et attente trop longue (QUEUE_WAIT_SECONDS): 429
+- Timeout de pipeline (PROCESSING_TIMEOUT_SECONDS): 504
+
+4) Gestion upload
+- Lecture stream par chunks (pas chargement full RAM direct)
+- Limite backend MAX_FILE_SIZE (50 MB)
+- Si depassement: 413
+- Ecriture temporaire sur disque
+
+5) Pipeline extraction + inference
+- analyzer_utils.extract_players_from_replay:
+  - parse replay via subtr_actor
+  - extrait informations physiques + reseau
+  - genere CSV par joueur
+- eval_player_game.evaluate_csv:
+  - calcule prediction par joueur
+  - renvoie label + confidence
+
+6) Reponse API
+- Format JSON:
+  {
+    "replay_name": "...",
+    "players": [
+      {"name": "...", "prediction": "bots|real", "confidence": 97.1},
+      ...
+    ]
+  }
+
+7) Nettoyage
+- Suppression des fichiers temporaires en finally, meme en cas d'erreur.
+
+
+Lien exact entre Front et Back (flux complet)
+---------------------------------------------
+Etape 1
+- Utilisateur depose un fichier .replay dans le navigateur.
+
+Etape 2
+- Frontend JS envoie POST /api/analyze (sur domaine Vercel).
+
+Etape 3
+- Vercel function recoit la requete, applique ses protections,
+  ajoute les secrets (x-api-key, optionnel bearer), puis forward vers HF.
+
+Etape 4
+- FastAPI HF verifie X-API-Key + CORS + taille + disponibilite modele.
+
+Etape 5
+- Backend extrait les donnees, lance l'inference et renvoie JSON.
+
+Etape 6
+- Proxy Vercel retransmet la reponse au navigateur.
+
+Etape 7
+- Frontend affiche les resultats.
+
+C'est ce chainage qui permet:
+- de cacher les secrets
+- de controler les abus
+- de garder une architecture scalable simple
+
+
+Variables d'environnement critiques
+-----------------------------------
+A. Vercel
+- HF_API_URL
+  Exemple: https://edouard77-rl-bot-detector.hf.space/analyze
+- HF_API_KEY
+  Meme valeur que HF_API_KEY cote HF
+- HF_SPACE_TOKEN (optionnel)
+  Necessaire si le Space HF est prive
+
+B. Hugging Face Space
+- HF_API_KEY
+  Cle attendue dans X-API-Key
+- ALLOWED_ORIGIN
+  Exemple: https://rl-bot-detector-frontend.vercel.app
+- MAX_CONCURRENT_JOBS (optionnel)
+- QUEUE_WAIT_SECONDS (optionnel)
+- PROCESSING_TIMEOUT_SECONDS (optionnel)
+
+
+Codes d'erreur importants et interpretation
+-------------------------------------------
+Frontend/Proxy
+- 400: mauvaise requete (pas multipart/form-data)
+- 405: methode non autorisee (GET sur /api/analyze)
+- 413: fichier trop grand
+- 429: trop de requetes (rate limit)
+- 500: variable manquante / config invalide
+- 502: echec contact backend HF
+- 504: timeout proxy
+
+Backend HF
+- 401: API key invalide/absente
+- 413: fichier trop grand (limite backend)
+- 429: backend occupe (queue timeout)
+- 503: modele non charge
+- 504: timeout traitement inference
+
+
+Pourquoi certains 404 apparaissaient
+------------------------------------
+Il y a eu 2 types de 404 dans le debug:
+
+1) 404 Vercel /api/analyze
+- lie au routing/deploiement function au debut
+- corrige par config/routing et redeploy
+
+2) 404 HTML Hugging Face
+- HF_API_URL valide en forme mais endpoint inaccessible anonymement
+  (cas typique Space prive)
+- solution:
+  - soit Space public
+  - soit HF_SPACE_TOKEN dans Vercel pour Authorization Bearer
+
+
+Etat actuel du systeme (architecture cible)
+-------------------------------------------
+- Front statique: OK
+- Proxy Vercel: OK (secrets + protections + diagnostics)
+- Backend HF: OK (securite + inference + garde-fous)
+- Pont front<->back: OK avec variables correctement configurees
+
+
+Bonnes pratiques exploitation (production)
+------------------------------------------
+1) Rotation secrets
+- changer HF_API_KEY periodiquement
+- revoquer immediatement tout token expose
+
+2) Monitoring
+- surveiller logs Vercel et HF
+- suivre ratio 2xx/4xx/5xx
+
+3) Anti-abus renforce
+- ajouter Cloudflare/WAF si trafic public important
+- ajouter rate limit distribue si necessaire
+
+4) Capacite
+- ajuster MAX_CONCURRENT_JOBS selon RAM/CPU HF
+- surveiller temps moyen d'inference
+
+5) Fiabilite
+- garder des messages d'erreur explicites
+- preferer fail-fast sur mauvaises configs
+
+
+Checklist rapide de verification finale
+---------------------------------------
+1) GET /api/analyze => 405 (normal)
+2) Upload replay valide < 4.5 MB => 200 + JSON resultats
+3) Upload > 4.5 MB => 413
+4) Burst requetes => 429 cote proxy
+5) Cles coherentes Vercel/HF => pas de 401
+6) ALLOWED_ORIGIN exact => pas de blocage CORS legitime
+
+
+Fin du guide.

@@ -11,9 +11,12 @@ __pycache__/
 # Data and Logs
 database/
 db_test/
+tmp_csvs/
+tmp_replays/
+data/
 *.parquet
 *.json
-!_rapport_extraction.json  # On peut garder les rapports si on veut
+!_rapport_extraction.json
 !suspects_ballcam.json
 
 # Replays
@@ -21,7 +24,15 @@ replay/
 source/
 *.replay
 
+# Exploratory / Junk
+Best_strat_extract/
+strat1/
+frontend/
+RL_Bot_detector_space/
+
 # IDEs
 .vscode/
 .idea/
 .DS_Store
+*.code-workspace
+.data/

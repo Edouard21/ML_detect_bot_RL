@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pandas
+numpy
+subtr_actor_py
